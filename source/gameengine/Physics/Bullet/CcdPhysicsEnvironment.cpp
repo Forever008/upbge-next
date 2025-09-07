@@ -3024,6 +3024,7 @@ void CcdPhysicsEnvironment::ConvertObject(BL_SceneConverter *converter,
   switch (bounds) {
     case OB_BOUND_SPHERE: {
       shapeInfo->m_shapeType = PHY_SHAPE_SPHERE;
+      shapeInfo->m_radius = MT_max(MT_max(bounds_extends[0], bounds_extends[1]), bounds_extends[2]);
       bm = shapeInfo->CreateBulletShape(ci.m_margin);
       break;
     }
