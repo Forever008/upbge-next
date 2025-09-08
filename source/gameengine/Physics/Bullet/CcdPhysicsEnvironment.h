@@ -81,7 +81,20 @@ class CcdPhysicsEnvironment : public PHY_IPhysicsEnvironment {
 
   /// solver iterations
   //int m_numIterations;
+  
+  // Limit the number of callback invocations to once per frame for each unique pair of objects
+	struct CollisionPair { 
+		CcdPhysicsController* ctrl1;
+		CcdPhysicsController* ctrl2;
 
+		bool operator<(const CollisionPair& other) const {
+			if (ctrl1 != other.ctrl1)
+				return ctrl1 < other.ctrl1;
+			return ctrl2 < other.ctrl2;
+		}
+	};
+
+	std::map<CollisionPair, int> m_callbackCounter;
   /// timestep subdivisions
   int m_numTimeSubSteps;
 

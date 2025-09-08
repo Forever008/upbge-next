@@ -718,11 +718,13 @@ void CcdPhysicsEnvironment::SimulationSubtickCallback(btScalar timeStep)
   for (it = m_controllers.begin(); it != m_controllers.end(); it++) {
     (*it)->SimulationTick(timeStep);
   }
+  CallbackTriggers();
 }
 
 bool CcdPhysicsEnvironment::ProceedDeltaTime(double curTime, float timeStep, float interval)
 {
   std::set<CcdPhysicsController *>::iterator it;
+  m_callbackCounter.clear();
   int i;
 
   // Update Bullet global variables.
@@ -749,8 +751,6 @@ bool CcdPhysicsEnvironment::ProceedDeltaTime(double curTime, float timeStep, flo
     WrapperVehicle *veh = m_wrapperVehicles[i];
     veh->SyncWheels();
   }
-
-  CallbackTriggers();
 
   return true;
 }
@@ -2113,28 +2113,38 @@ void CcdPhysicsEnvironment::CallbackTriggers()
 
     bool first;
     // Test if one of the controller is registered and use collision callback.
+
+    CollisionPair pair; // Limit the number of callback invocations to once per frame for each unique pair of objects
     if (ctrl0->Registered()) {
       first = true;
+      pair.ctrl1 = ctrl0;
+			pair.ctrl2 = ctrl1;
     }
     else if (ctrl1->Registered()) {
       first = false;
+      pair.ctrl1 = ctrl1;
+			pair.ctrl2 = ctrl0;
     }
     else {
       // No controllers registered for collision callbacks.
       continue;
     }
 
-    // Bullet does not refresh the manifold contact point for object without contact response
-    // may need to remove this when a newer Bullet version is integrated
-    if (!dispatcher->needsResponse(col0, col1)) {
-      // Refresh algorithm fails sometimes when there is penetration
-      // (usuall the case with ghost and sensor objects)
-      // Let's just clear the manifold, in any case, it is recomputed on each frame.
-      manifold->clearManifold();  // refreshContactPoints(rb0->getCenterOfMassTransform(),rb1->getCenterOfMassTransform());
-    }
+    auto &counter = m_callbackCounter[pair];
+    if (counter < 1) {
+      // Bullet does not refresh the manifold contact point for object without contact response
+      // may need to remove this when a newer Bullet version is integrated
+      if (!dispatcher->needsResponse(col0, col1)) {
+        // Refresh algorithm fails sometimes when there is penetration
+        // (usuall the case with ghost and sensor objects)
+        // Let's just clear the manifold, in any case, it is recomputed on each frame.
+        manifold->clearManifold();  // refreshContactPoints(rb0->getCenterOfMassTransform(),rb1->getCenterOfMassTransform());
+      }
 
-    const CcdCollData *coll_data = new CcdCollData(manifold);
-    m_triggerCallbacks[PHY_OBJECT_RESPONSE](m_triggerCallbacksUserPtrs[PHY_OBJECT_RESPONSE], ctrl0, ctrl1, coll_data, first);
+      const CcdCollData *coll_data = new CcdCollData(manifold);
+      m_triggerCallbacks[PHY_OBJECT_RESPONSE](m_triggerCallbacksUserPtrs[PHY_OBJECT_RESPONSE], ctrl0, ctrl1, coll_data, first);
+      counter++;
+    }
   }
 }
 
@@ -3393,7 +3403,8 @@ CcdCollData::~CcdCollData()
 
 unsigned int CcdCollData::GetNumContacts() const
 {
-  return m_manifoldPoint->getNumContacts();
+  // return m_manifoldPoint->getNumContacts(); // This may occasionally return 0, which can cause incorrect collision contact detection.
+  return 1; // Forcefully return 1 as a temporary workaround.
 }
 
 MT_Vector3 CcdCollData::GetLocalPointA(unsigned int index, bool first) const
